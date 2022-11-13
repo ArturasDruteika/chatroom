@@ -4,10 +4,10 @@
 #include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <iostream>
 
 
 #define PORT 8080
+
 
 
 void startServer()
@@ -62,12 +62,4 @@ void startServer()
     close(new_socket);
     // closing the listening socket
     shutdown(server_fd, SHUT_RDWR);
-}
-
-
-int main()
-{
-    startServer();
-
-    return 0;
 }
