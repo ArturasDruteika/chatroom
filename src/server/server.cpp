@@ -9,7 +9,6 @@
 #define PORT 8080
 
 
-
 void startServer()
 {
     int server_fd, new_socket;
@@ -24,7 +23,9 @@ void startServer()
     address.sin_port = htons(PORT);
 
     // Creating socket file descriptor
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    if ((server_fd = socket(AF_INET,
+                            SOCK_STREAM,
+                            0)) < 0)
     {
         perror("socket failed");
         exit(EXIT_FAILURE);
