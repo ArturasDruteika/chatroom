@@ -4,6 +4,8 @@
 #include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <string>
+#include "arpa/inet.h"
 
 
 #define PORT 8080
@@ -11,12 +13,13 @@
 
 void startServer()
 {
+    struct sockaddr_in address{};
+
     int server_fd, new_socket;
-    struct sockaddr_in address;
-    int opt = 1;
     int addrlen = sizeof(address);
     char buffer[1024] = {0};
-    char *hello = "Hello from server";
+    std::string welcomeToServerMsg = "Hello from server";
+    char *hello = const_cast<char *>(welcomeToServerMsg.c_str());
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
@@ -54,12 +57,23 @@ void startServer()
         exit(EXIT_FAILURE);
     }
 
-    read(new_socket, buffer, 1024);
-    printf("%s\n", buffer);
-    send(new_socket, hello, strlen(hello), 0);
-    printf("Hello message sent\n");
+    int i = 0;
 
-    // closing the connected socket
+    while(true)
+    {
+        read(new_socket, buffer, 1024);
+
+        printf("IP address is (client name): %s\n", inet_ntoa(address.sin_addr));
+
+        printf("%s\n", buffer);
+        send(new_socket, hello, strlen(hello), 0);
+        printf("Hello message sent\n");
+
+        // closing the connected socket
+        if (i == 10) break;
+        i += 1;
+    }
+
     close(new_socket);
     // closing the listening socket
     shutdown(server_fd, SHUT_RDWR);
