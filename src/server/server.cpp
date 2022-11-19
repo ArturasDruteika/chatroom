@@ -7,6 +7,8 @@
 #include <string>
 #include "arpa/inet.h"
 
+#include "../../headers/server/server.hpp"
+
 
 #define PORT 8080
 
@@ -61,9 +63,10 @@ void startServer()
 
     while(true)
     {
+        bzero(buffer, 256);
         read(new_socket, buffer, 1024);
 
-        printf("IP address is (client name): %s\n", inet_ntoa(address.sin_addr));
+        printf("IP address is (client name): %s, PORT: %u\n", inet_ntoa(address.sin_addr), (int)address.sin_port);
 
         printf("%s\n", buffer);
         send(new_socket, hello, strlen(hello), 0);
