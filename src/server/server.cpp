@@ -7,11 +7,43 @@
 #include <string>
 #include "arpa/inet.h"
 #include <sys/time.h>
+#include <tuple>
 
 #include "../../headers/server/server.hpp"
 
-
 #define PORT 8080
+
+
+void initializeAllClients(int *clientSocket, int maxClients)
+{
+    for (int i = 0; i < maxClients; i++)
+    {
+        clientSocket[i] = 0;
+    }
+}
+
+
+std::tuple<int, int> addChildSocketsToSet(
+        int socketDescriptor,
+        int maxMasterSocketDescriptor,
+        int nMaxClients,
+        const int *clientSocketArray,
+        fd_set readFileDescriptor)
+{
+    for (int i = 0; i < nMaxClients; i++)
+    {
+        //socket descriptor
+        socketDescriptor = clientSocketArray[i];
+
+        //if valid socket descriptor then add to read list
+        if (socketDescriptor > 0) FD_SET(socketDescriptor, &readFileDescriptor);
+
+        //highest file descriptor number, need it for the select function
+        if (socketDescriptor > maxMasterSocketDescriptor) maxMasterSocketDescriptor = socketDescriptor;
+    }
+
+    return std::make_tuple(socketDescriptor, maxMasterSocketDescriptor);
+}
 
 
 void startServer()
@@ -19,7 +51,7 @@ void startServer()
     struct sockaddr_in address{};
 
     int opt = true;
-    int masterSocket, clientSocket[30], maxClients = 30, activity, valRead, sd, maxSd;
+    int masterSocket, clientSocket[30], maxClients = 4, activity, valRead, sd, maxSd;
 
     int newSocket;
     int addrLen = sizeof(address);
@@ -30,13 +62,10 @@ void startServer()
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
+    //set of socket descriptors
     fd_set readFds;
 
-    // Initialize all clients socket to 0 so not checked
-    for (int i = 0; i < maxClients; i++)
-    {
-        clientSocket[i] = 0;
-    }
+    initializeAllClients(clientSocket, maxClients);
 
     // Creating socket file descriptor
     if ((masterSocket = socket(AF_INET,
@@ -85,21 +114,16 @@ void startServer()
         FD_SET(masterSocket, &readFds);
         maxSd = masterSocket;
 
-        //add child sockets to set
-        for (int i = 0; i < maxClients; i++)
-        {
-            //socket descriptor
-            sd = clientSocket[i];
+        addChildSocketsToSet(
+                maxClients,
+                sd,
+                maxSd,
+                clientSocket,
+                readFds
+                );
 
-            //if valid socket descriptor then add to read list
-            if (sd > 0)
-                    FD_SET(sd, &readFds);
-
-            //highest file descriptor number, need it for the select function
-            if (sd > maxSd)
-                maxSd = sd;
-        }
-
+        //wait for an activity on one of the sockets , timeout is NULL ,
+        //so wait indefinitely
         activity = select(maxSd + 1, &readFds, nullptr, nullptr, nullptr);
 
         if ((activity < 0) && (errno != EINTR))
@@ -108,11 +132,11 @@ void startServer()
         }
 
         //If something happened on the master socket ,
-        //then its an incoming connection
+        //then it's an incoming connection
         if (FD_ISSET(masterSocket, &readFds))
         {
             if ((newSocket = accept(masterSocket,
-                                    (struct sockaddr *) &address, (socklen_t *) &addrLen)) < 0)
+                                    (struct sockaddr *) &address,(socklen_t *) &addrLen)) < 0)
             {
                 perror("accept");
                 exit(EXIT_FAILURE);
@@ -146,7 +170,7 @@ void startServer()
             }
         }
 
-        //else its some IO operation on some other socket
+        //else it's some IO operation on some other socket
         for (int i = 0; i < maxClients; i++)
         {
             sd = clientSocket[i];
