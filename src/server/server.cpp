@@ -25,10 +25,10 @@ void initializeAllClients(int *clientSocket, int maxClients)
 
 std::tuple<int, int> addChildSocketsToSet(
         int socketDescriptor,
-        int maxMasterSocketDescriptor,
+        int maxSocketDescriptor,
         int nMaxClients,
         const int *clientSocketArray,
-        fd_set readFileDescriptor)
+        fd_set &readFileDescriptor)
 {
     for (int i = 0; i < nMaxClients; i++)
     {
@@ -39,10 +39,26 @@ std::tuple<int, int> addChildSocketsToSet(
         if (socketDescriptor > 0) FD_SET(socketDescriptor, &readFileDescriptor);
 
         //highest file descriptor number, need it for the select function
-        if (socketDescriptor > maxMasterSocketDescriptor) maxMasterSocketDescriptor = socketDescriptor;
+        if (socketDescriptor > maxSocketDescriptor) maxSocketDescriptor = socketDescriptor;
     }
 
-    return std::make_tuple(socketDescriptor, maxMasterSocketDescriptor);
+    return std::make_tuple(socketDescriptor, maxSocketDescriptor);
+}
+
+
+void addNewSocket(int *clientSocket, int newSocket, int maxClients)
+{
+    for (int i = 0; i < maxClients; i++)
+    {
+        //if position is empty
+        if (clientSocket[i] == 0)
+        {
+            clientSocket[i] = newSocket;
+            printf("Adding to list of sockets as %d\n", i);
+
+            break;
+        }
+    }
 }
 
 
@@ -51,7 +67,8 @@ void startServer()
     struct sockaddr_in address{};
 
     int opt = true;
-    int masterSocket, clientSocket[30], maxClients = 4, activity, valRead, sd, maxSd;
+    int masterSocket, maxClients = 4, activity, valRead, sd, maxSd;
+    int clientSocket[maxClients];
 
     int newSocket;
     int addrLen = sizeof(address);
@@ -114,13 +131,13 @@ void startServer()
         FD_SET(masterSocket, &readFds);
         maxSd = masterSocket;
 
-        addChildSocketsToSet(
-                maxClients,
+        std::tie(sd, maxSd) = addChildSocketsToSet(
                 sd,
                 maxSd,
+                maxClients,
                 clientSocket,
                 readFds
-                );
+        );
 
         //wait for an activity on one of the sockets , timeout is NULL ,
         //so wait indefinitely
@@ -136,7 +153,7 @@ void startServer()
         if (FD_ISSET(masterSocket, &readFds))
         {
             if ((newSocket = accept(masterSocket,
-                                    (struct sockaddr *) &address,(socklen_t *) &addrLen)) < 0)
+                                    (struct sockaddr *) &address, (socklen_t *) &addrLen)) < 0)
             {
                 perror("accept");
                 exit(EXIT_FAILURE);
@@ -157,17 +174,7 @@ void startServer()
             puts("Welcome message sent successfully");
 
             //add new socket to array of sockets
-            for (int i = 0; i < maxClients; i++)
-            {
-                //if position is empty
-                if (clientSocket[i] == 0)
-                {
-                    clientSocket[i] = newSocket;
-                    printf("Adding to list of sockets as %d\n", i);
-
-                    break;
-                }
-            }
+            addNewSocket(clientSocket, newSocket, maxClients);
         }
 
         //else it's some IO operation on some other socket

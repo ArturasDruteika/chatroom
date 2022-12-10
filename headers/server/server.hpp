@@ -8,10 +8,14 @@
 
 
 void initializeAllClients(int *clientSocket, int maxClients);
+
 std::tuple<int, int> addChildSocketsToSet(
         int socketDescriptor,
-        int maxMasterSocketDescriptor,
+        int maxSocketDescriptor,
         int nMaxClients,
         const int *clientSocketArray,
-        fd_set readFileDescriptor);
+        fd_set &readFileDescriptor);
+
+void addNewSocket(int *clientSocket, int newSocket, int maxClients);
+
 void startServer();
