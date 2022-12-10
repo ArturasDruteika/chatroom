@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <tuple>
 
+
 #include "../../headers/server/server.hpp"
 
 #define PORT 8080
@@ -62,6 +63,31 @@ void addNewSocket(int *clientSocket, int newSocket, int maxClients)
 }
 
 
+int createMasterSocket(int optimalValue)
+{
+    int masterSocket;
+
+    if ((masterSocket = socket(AF_INET,
+                               SOCK_STREAM,
+                               0)) < 0)
+    {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (setsockopt(masterSocket,
+                   SOL_SOCKET,
+                   SO_REUSEADDR,
+                   (char *) &optimalValue,
+                   sizeof(optimalValue)) < 0)
+    {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+    return masterSocket;
+}
+
+
 void startServer()
 {
     struct sockaddr_in address{};
@@ -84,24 +110,8 @@ void startServer()
 
     initializeAllClients(clientSocket, maxClients);
 
-    // Creating socket file descriptor
-    if ((masterSocket = socket(AF_INET,
-                               SOCK_STREAM,
-                               0)) < 0)
-    {
-        perror("socket failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (setsockopt(masterSocket,
-                   SOL_SOCKET,
-                   SO_REUSEADDR,
-                   (char *) &opt,
-                   sizeof(opt)) < 0)
-    {
-        perror("socket failed");
-        exit(EXIT_FAILURE);
-    }
+    // Creating master socket file descriptor
+    masterSocket = createMasterSocket(opt);
 
     // Forcefully attaching socket to the port 8080
     if (bind(masterSocket,
@@ -189,20 +199,24 @@ void startServer()
                 if ((valRead = (int) read(sd, buffer, 1024)) == 0)
                 {
                     //Somebody disconnected , get his details and print
-                    getpeername(sd, (struct sockaddr *) &address, \
-                        (socklen_t *) &addrLen);
-                    printf("Host disconnected , ip %s , port %d \n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+                    getpeername(sd,
+                                (struct sockaddr *) &address,(socklen_t *) &addrLen);
+
+                    printf("Host disconnected , ip %s , port %d \n",
+                           inet_ntoa(address.sin_addr),
+                           ntohs(address.sin_port));
 
                     //Close the socket and mark as 0 in list for reuse
                     close(sd);
                     clientSocket[i] = 0;
                 }
 
-                    //Echo back the message that came in
+                //Echo back the message that came in
                 else
                 {
                     //set the string terminating NULL byte on the end
                     //of the data read
+                    printf("%s", buffer);
                     buffer[valRead] = '\0';
                     send(sd, buffer, strlen(buffer), 0);
                 }

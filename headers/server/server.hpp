@@ -19,3 +19,5 @@ std::tuple<int, int> addChildSocketsToSet(
 void addNewSocket(int *clientSocket, int newSocket, int maxClients);
 
 void startServer();
+
+int createMasterSocket(int optimalValue);
