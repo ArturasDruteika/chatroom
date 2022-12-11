@@ -7,38 +7,66 @@
 #include <string>
 #include "arpa/inet.h"
 #include <sys/time.h>
+#include <tuple>
+
 
 #include "../../headers/server/server.hpp"
-
 
 #define PORT 8080
 
 
-void startServer()
+void initializeAllClients(int *clientSocket, int maxClients)
 {
-    struct sockaddr_in address{};
-
-    int opt = true;
-    int masterSocket, clientSocket[30], maxClients = 30, activity, valRead, sd, maxSd;
-
-    int newSocket;
-    int addrLen = sizeof(address);
-    char buffer[1024] = {0};
-    char *message = "ECHO Daemon v1.0 \r\n";
-
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    fd_set readFds;
-
-    // Initialize all clients socket to 0 so not checked
     for (int i = 0; i < maxClients; i++)
     {
         clientSocket[i] = 0;
     }
+}
 
-    // Creating socket file descriptor
+
+std::tuple<int, int> addChildSocketsToSet(
+        int socketDescriptor,
+        int maxSocketDescriptor,
+        int nMaxClients,
+        const int *clientSocketArray,
+        fd_set &readFileDescriptor)
+{
+    for (int i = 0; i < nMaxClients; i++)
+    {
+        //socket descriptor
+        socketDescriptor = clientSocketArray[i];
+
+        //if valid socket descriptor then add to read list
+        if (socketDescriptor > 0) FD_SET(socketDescriptor, &readFileDescriptor);
+
+        //highest file descriptor number, need it for the select function
+        if (socketDescriptor > maxSocketDescriptor) maxSocketDescriptor = socketDescriptor;
+    }
+
+    return std::make_tuple(socketDescriptor, maxSocketDescriptor);
+}
+
+
+void addNewSocket(int *clientSocket, int newSocket, int maxClients)
+{
+    for (int i = 0; i < maxClients; i++)
+    {
+        //if position is empty
+        if (clientSocket[i] == 0)
+        {
+            clientSocket[i] = newSocket;
+            printf("Adding to list of sockets as %d\n", i);
+
+            break;
+        }
+    }
+}
+
+
+int createMasterSocket(int optimalValue)
+{
+    int masterSocket;
+
     if ((masterSocket = socket(AF_INET,
                                SOCK_STREAM,
                                0)) < 0)
@@ -50,12 +78,40 @@ void startServer()
     if (setsockopt(masterSocket,
                    SOL_SOCKET,
                    SO_REUSEADDR,
-                   (char *) &opt,
-                   sizeof(opt)) < 0)
+                   (char *) &optimalValue,
+                   sizeof(optimalValue)) < 0)
     {
         perror("socket failed");
         exit(EXIT_FAILURE);
     }
+    return masterSocket;
+}
+
+
+void startServer()
+{
+    struct sockaddr_in address{};
+
+    int opt = true;
+    int masterSocket, maxClients = 4, activity, valRead, sd, maxSd;
+    int clientSocket[maxClients];
+
+    int newSocket;
+    int addrLen = sizeof(address);
+    char buffer[1024] = {0};
+    char *message = "Greeting from the server!!! \r\n";
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    //set of socket descriptors
+    fd_set readFds;
+
+    initializeAllClients(clientSocket, maxClients);
+
+    // Creating master socket file descriptor
+    masterSocket = createMasterSocket(opt);
 
     // Forcefully attaching socket to the port 8080
     if (bind(masterSocket,
@@ -85,21 +141,16 @@ void startServer()
         FD_SET(masterSocket, &readFds);
         maxSd = masterSocket;
 
-        //add child sockets to set
-        for (int i = 0; i < maxClients; i++)
-        {
-            //socket descriptor
-            sd = clientSocket[i];
+        std::tie(sd, maxSd) = addChildSocketsToSet(
+                sd,
+                maxSd,
+                maxClients,
+                clientSocket,
+                readFds
+        );
 
-            //if valid socket descriptor then add to read list
-            if (sd > 0)
-                    FD_SET(sd, &readFds);
-
-            //highest file descriptor number, need it for the select function
-            if (sd > maxSd)
-                maxSd = sd;
-        }
-
+        //wait for an activity on one of the sockets , timeout is NULL ,
+        //so wait indefinitely
         activity = select(maxSd + 1, &readFds, nullptr, nullptr, nullptr);
 
         if ((activity < 0) && (errno != EINTR))
@@ -108,7 +159,7 @@ void startServer()
         }
 
         //If something happened on the master socket ,
-        //then its an incoming connection
+        //then it's an incoming connection
         if (FD_ISSET(masterSocket, &readFds))
         {
             if ((newSocket = accept(masterSocket,
@@ -133,50 +184,51 @@ void startServer()
             puts("Welcome message sent successfully");
 
             //add new socket to array of sockets
-            for (int i = 0; i < maxClients; i++)
-            {
-                //if position is empty
-                if (clientSocket[i] == 0)
-                {
-                    clientSocket[i] = newSocket;
-                    printf("Adding to list of sockets as %d\n", i);
-
-                    break;
-                }
-            }
+            addNewSocket(clientSocket, newSocket, maxClients);
         }
 
-        //else its some IO operation on some other socket
+        //else it's some IO operation on some other socket
         for (int i = 0; i < maxClients; i++)
         {
             sd = clientSocket[i];
 
             if (FD_ISSET(sd, &readFds))
             {
+                bzero(buffer, 1024);
+
                 //Check if it was for closing , and also read the
                 //incoming message
-                if ((valRead = (int) read(sd, buffer, 1024)) == 0)
+                valRead = (int) read(sd, buffer, 1024);
+
+                if (valRead == 0)
                 {
                     //Somebody disconnected , get his details and print
-                    getpeername(sd, (struct sockaddr *) &address, \
-                        (socklen_t *) &addrLen);
-                    printf("Host disconnected , ip %s , port %d \n", inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+                    getpeername(sd,
+                                (struct sockaddr *) &address,(socklen_t *) &addrLen);
+
+                    printf("Host disconnected , ip %s , port %d \n",
+                           inet_ntoa(address.sin_addr),
+                           ntohs(address.sin_port));
 
                     //Close the socket and mark as 0 in list for reuse
                     close(sd);
                     clientSocket[i] = 0;
                 }
 
-                    //Echo back the message that came in
+                //Echo back the message that came in
                 else
                 {
+                    printf("port : %d ---- message: %s",
+                           ntohs(address.sin_port),
+                           buffer);
+
                     //set the string terminating NULL byte on the end
                     //of the data read
                     buffer[valRead] = '\0';
                     send(sd, buffer, strlen(buffer), 0);
+                    bzero(buffer, 1024);
                 }
             }
         }
-
     }
 }
