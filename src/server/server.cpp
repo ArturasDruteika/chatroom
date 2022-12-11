@@ -99,7 +99,7 @@ void startServer()
     int newSocket;
     int addrLen = sizeof(address);
     char buffer[1024] = {0};
-    char *message = "ECHO Daemon v1.0 \r\n";
+    char *message = "Greeting from the server!!! \r\n";
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
@@ -194,9 +194,13 @@ void startServer()
 
             if (FD_ISSET(sd, &readFds))
             {
+                bzero(buffer, 1024);
+
                 //Check if it was for closing , and also read the
                 //incoming message
-                if ((valRead = (int) read(sd, buffer, 1024)) == 0)
+                valRead = (int) read(sd, buffer, 1024);
+
+                if (valRead == 0)
                 {
                     //Somebody disconnected , get his details and print
                     getpeername(sd,
@@ -214,14 +218,17 @@ void startServer()
                 //Echo back the message that came in
                 else
                 {
+                    printf("port : %d ---- message: %s",
+                           ntohs(address.sin_port),
+                           buffer);
+
                     //set the string terminating NULL byte on the end
                     //of the data read
-                    printf("%s", buffer);
                     buffer[valRead] = '\0';
                     send(sd, buffer, strlen(buffer), 0);
+                    bzero(buffer, 1024);
                 }
             }
         }
-
     }
 }
